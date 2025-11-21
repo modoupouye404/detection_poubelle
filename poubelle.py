@@ -3,21 +3,27 @@ import streamlit as st
 import os
 import numpy as np
 from PIL import Image
+import io
 
-# Vérification et installation des dépendances manquantes
+# Configuration pour éviter les problèmes OpenCV
+os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '0'
+os.environ['OPENCV_VIDEOIO_PRIORITY_MSMF'] = '0'
+
+# Import sécurisé d'OpenCV
 try:
     import cv2
-except ImportError:
-    st.error("OpenCV n'est pas installé. Installation en cours...")
-    os.system("pip install opencv-python-headless")
-    import cv2
+    CV2_AVAILABLE = True
+except ImportError as e:
+    st.error(f"❌ OpenCV non disponible: {e}")
+    CV2_AVAILABLE = False
 
+# Import sécurisé d'Ultralytics
 try:
     from ultralytics import YOLO
-except ImportError:
-    st.error("Ultralytics n'est pas installé. Installation en cours...")
-    os.system("pip install ultralytics")
-    from ultralytics import YOLO
+    ULTRALYTICS_AVAILABLE = True
+except ImportError as e:
+    st.error(f"❌ Ultralytics non disponible: {e}")
+    ULTRALYTICS_AVAILABLE = False
 
 # ---------------------------------------
 # 🎨 CONFIG INTERFACE MODERNE
@@ -236,41 +242,6 @@ custom_css = """
     .content-card p, .content-card div {
         color: #c8e6c8 !important;
     }
-    
-    /* Animations */
-    @keyframes fadeInUp {
-        from { 
-            opacity: 0; 
-            transform: translateY(30px); 
-        }
-        to { 
-            opacity: 1; 
-            transform: translateY(0); 
-        }
-    }
-    
-    .fade-in-up {
-        animation: fadeInUp 0.8s ease-out;
-    }
-    
-    @keyframes pulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-        100% { transform: scale(1); }
-    }
-    
-    .pulse {
-        animation: pulse 2s infinite;
-    }
-    
-    /* Style pour les textes Streamlit dans les cartes vertes */
-    .content-card .stMarkdown, 
-    .content-card .stText,
-    .content-card .stWarning,
-    .content-card .stInfo,
-    .content-card .stSuccess {
-        color: #c8e6c8 !important;
-    }
 </style>
 """
 
@@ -289,10 +260,8 @@ def ensure_models_directory():
 @st.cache_resource
 def load_model(path=MODEL_PATH):
     if not os.path.exists(path):
-        st.warning(f"📁 Modèle non trouvé à l'emplacement: {path}")
         return None
     try:
-        # Chargement simple du modèle
         model = YOLO(path)
         st.success("✅ Modèle YOLO chargé avec succès!")
         return model
@@ -302,47 +271,37 @@ def load_model(path=MODEL_PATH):
 
 # Initialisation
 ensure_models_directory()
-model = load_model()
+model = load_model() if ULTRALYTICS_AVAILABLE else None
 
 # ---------------------------------------
 # 🖥️ HEADER PRINCIPAL
 # ---------------------------------------
 st.markdown("""
-<div class="main-header fade-in-up">
+<div class="main-header">
     <div class="main-title">🗑️ Détection Intelligente</div>
     <div class="main-subtitle">IA Avancée · Détection en Temps Réel · Classification Automatique</div>
 </div>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------
-# 🛠️ BARRE D'OUTILS SUPÉRIEURE
-# ---------------------------------------
-col1, col2, col3 = st.columns([2, 1, 1])
+# Avertissements de dépendances
+if not CV2_AVAILABLE:
+    st.warning("""
+    ⚠️ **OpenCV non disponible** 
+    - L'affichage des images annotées sera limité
+    - La détection fonctionne normalement
+    """)
 
-with col1:
-    st.markdown("### 📋 Configuration du Modèle")
-
-with col2:
-    if model is None:
-        st.error("❌ Modèle non chargé")
-    else:
-        st.success("✅ Modèle chargé")
-
-with col3:
-    if os.path.exists(MODEL_PATH):
-        with open(MODEL_PATH, "rb") as f:
-            st.download_button(
-                "💾 Télécharger le modèle", 
-                data=f, 
-                file_name="best.pt",
-                help="Téléchargez le modèle YOLO actuel",
-                use_container_width=True
-            )
+if not ULTRALYTICS_AVAILABLE:
+    st.error("""
+    ❌ **Ultralytics non disponible**
+    - Impossible de charger les modèles YOLO
+    - Vérifiez l'installation des dépendances
+    """)
 
 # ---------------------------------------
 # 📤 SECTION UPLOAD DU MODÈLE
 # ---------------------------------------
-st.markdown("<div class='content-card fade-in-up'>", unsafe_allow_html=True)
+st.markdown("<div class='content-card'>", unsafe_allow_html=True)
 st.markdown("### 🚀 Configuration du Modèle IA")
 
 if model is None:
@@ -375,7 +334,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 # ---------------------------------------
 # 📸 SECTION UPLOAD D'IMAGE
 # ---------------------------------------
-st.markdown("<div class='upload-section fade-in-up'>", unsafe_allow_html=True)
+st.markdown("<div class='upload-section'>", unsafe_allow_html=True)
 st.markdown("### 📸 Analyse d'Image")
 st.markdown("""
 <div style='text-align: center;'>
@@ -396,12 +355,12 @@ st.markdown("</div>", unsafe_allow_html=True)
 # ---------------------------------------
 # 🖼️ AFFICHAGE DES RÉSULTATS
 # ---------------------------------------
-if uploaded_img:
+if uploaded_img and ULTRALYTICS_AVAILABLE:
     # Layout principal pour images
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.markdown("<div class='content-card fade-in-up'>", unsafe_allow_html=True)
+        st.markdown("<div class='content-card'>", unsafe_allow_html=True)
         st.markdown("### 🖼️ Image Originale")
         try:
             image = Image.open(uploaded_img).convert("RGB")
@@ -414,99 +373,102 @@ if uploaded_img:
     # Bouton d'analyse centré
     st.markdown("<div style='text-align: center; margin: 2rem 0;'>", unsafe_allow_html=True)
     analyze = st.button(
-        "🚀 Lancer l'Analyse IA Avancée", 
+        "🚀 Lancer l'Analyse IA", 
         type="primary", 
         use_container_width=True,
-        help="Démarrer la détection et classification automatique"
+        disabled=(model is None)
     )
     st.markdown("</div>", unsafe_allow_html=True)
     
-    if analyze:
-        if model is None:
-            st.error("🚫 Aucun modèle YOLO disponible")
-        else:
-            with st.spinner("🔍 **Analyse en cours...** L'IA scanne l'image pour détecter les poubelles"):
-                # Conversion et prédiction
-                img_array = np.array(image)
-                
-                try:
-                    results = model.predict(img_array, conf=0.25, imgsz=640)
-                except Exception as e:
-                    st.error(f"❌ Erreur d'analyse: {e}")
-                    results = None
+    if analyze and model is not None:
+        with st.spinner("🔍 **Analyse en cours...** L'IA scanne l'image"):
+            # Conversion et prédiction
+            img_array = np.array(image)
+            
+            try:
+                results = model.predict(img_array, conf=0.25, imgsz=640)
+            except Exception as e:
+                st.error(f"❌ Erreur d'analyse: {e}")
+                results = None
 
-                if results is None or len(results) == 0:
-                    st.warning("⚠️ Aucune détection obtenue")
-                else:
-                    r = results[0]
+            if results and len(results) > 0:
+                r = results[0]
 
-                    # Image annotée
-                    try:
-                        annotated = r.plot()
-                        annotated = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-                    except Exception as e:
-                        st.warning(f"⚠️ Annotation échouée, affichage de l'original: {e}")
-                        annotated = img_array
-
-                    # Affichage résultats dans colonne 2
-                    with col2:
-                        st.markdown("<div class='content-card fade-in-up'>", unsafe_allow_html=True)
-                        st.markdown("### 📊 Résultats de Détection")
-                        st.image(annotated, caption="🟢 Détections YOLOv8 - Zones identifiées", use_container_width=True)
-                        st.markdown("</div>", unsafe_allow_html=True)
-
-                    # Statistiques de détection
-                    dets = getattr(r, "boxes", None)
-                    if dets is not None and len(dets) > 0:
-                        st.markdown("<div class='stats-container fade-in-up'>", unsafe_allow_html=True)
-                        st.markdown(f"""
-                        <div class="stat-item">
-                            <span class="stat-number">{len(dets)}</span>
-                            <span class="stat-label">Poubelles Détectées</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-number">{max(len(dets), 1)}</span>
-                            <span class="stat-label">Analyses Effectuées</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-number">YOLOv8</span>
-                            <span class="stat-label">Modèle IA</span>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        st.markdown("</div>", unsafe_allow_html=True)
-
-                    # Détails des détections
-                    st.markdown("<div class='content-card fade-in-up'>", unsafe_allow_html=True)
-                    st.markdown("### 🔍 Détails des Analyses")
+                # Affichage résultats dans colonne 2
+                with col2:
+                    st.markdown("<div class='content-card'>", unsafe_allow_html=True)
+                    st.markdown("### 📊 Résultats de Détection")
                     
-                    if dets is None or len(dets) == 0:
-                        st.warning("❌ Aucune poubelle détectée dans l'image")
+                    if CV2_AVAILABLE:
+                        try:
+                            # Tentative d'annotation avec OpenCV
+                            annotated = r.plot()
+                            annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+                            st.image(annotated_rgb, caption="🟢 Détections YOLOv8", use_container_width=True)
+                        except Exception as e:
+                            st.warning("⚠️ Annotation OpenCV non disponible")
+                            st.image(image, caption="Image originale (annotation non disponible)", use_container_width=True)
                     else:
-                        for i, box in enumerate(dets, start=1):
-                            cls_idx = int(box.cls[0])
-                            conf = float(box.conf[0])
-                            cls_name = model.names[cls_idx] if hasattr(model, "names") else str(cls_idx)
-                            
-                            # Affichage avec barre de confiance
-                            conf_percent = int(conf * 100)
-                            st.markdown(f"""
-                            <div class="confidence-bar-container">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                    <span class="detection-badge">🔍 Détection #{i} • {cls_name.upper()}</span>
-                                    <strong style="font-size: 1.3rem; color: #e8f5e8;">{conf_percent}%</strong>
-                                </div>
-                                <div class="confidence-bar" style="width: {conf_percent}%;"></div>
-                                <div style="text-align: center; color: #c8e6c8; font-size: 0.9rem; margin-top: 5px;">
-                                    Niveau de confiance de l'IA
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
+                        st.image(image, caption="Image originale (OpenCV non disponible)", use_container_width=True)
                     
                     st.markdown("</div>", unsafe_allow_html=True)
 
+                # Statistiques de détection
+                dets = getattr(r, "boxes", None)
+                if dets and len(dets) > 0:
+                    st.markdown("<div class='stats-container'>", unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div class="stat-item">
+                        <span class="stat-number">{len(dets)}</span>
+                        <span class="stat-label">Poubelles Détectées</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">{max(len(dets), 1)}</span>
+                        <span class="stat-label">Analyses Effectuées</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">YOLOv8</span>
+                        <span class="stat-label">Modèle IA</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+                    # Détails des détections
+                    st.markdown("<div class='content-card'>", unsafe_allow_html=True)
+                    st.markdown("### 🔍 Détails des Analyses")
+                    
+                    for i, box in enumerate(dets, start=1):
+                        cls_idx = int(box.cls[0])
+                        conf = float(box.conf[0])
+                        cls_name = model.names[cls_idx] if hasattr(model, "names") else str(cls_idx)
+                        
+                        # Affichage avec barre de confiance
+                        conf_percent = int(conf * 100)
+                        st.markdown(f"""
+                        <div class="confidence-bar-container">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <span class="detection-badge">🔍 Détection #{i} • {cls_name.upper()}</span>
+                                <strong style="font-size: 1.3rem; color: #e8f5e8;">{conf_percent}%</strong>
+                            </div>
+                            <div class="confidence-bar" style="width: {conf_percent}%;"></div>
+                            <div style="text-align: center; color: #c8e6c8; font-size: 0.9rem; margin-top: 5px;">
+                                Niveau de confiance de l'IA
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+                else:
+                    st.warning("❌ Aucune poubelle détectée dans l'image")
+            else:
+                st.error("❌ Aucun résultat d'analyse obtenu")
+
+elif uploaded_img and not ULTRALYTICS_AVAILABLE:
+    st.error("❌ Ultralytics n'est pas disponible - Impossible d'analyser l'image")
+
 else:
     # Section d'instructions quand aucune image n'est uploadée
-    st.markdown("<div class='content-card fade-in-up'>", unsafe_allow_html=True)
+    st.markdown("<div class='content-card'>", unsafe_allow_html=True)
     st.markdown("### 💡 Guide d'Utilisation")
     
     col_guide1, col_guide2, col_guide3 = st.columns(3)
@@ -541,7 +503,7 @@ else:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------
-# 🏁 FOOTER AMÉLIORÉ
+# 🏁 FOOTER
 # ---------------------------------------
 st.markdown("---")
 st.markdown("""
