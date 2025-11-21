@@ -1,21 +1,39 @@
 # app.py
 import streamlit as st
-from ultralytics import YOLO
 from PIL import Image
 import numpy as np
-import io
-import cv2
 import os
+import cv2
 
-# ---------------------------------------
-# 🧩 PATCH Torch 2.6 → Correction chargement YOLO
-# ---------------------------------------
+# ------------------------------------------------------
+# 🔧 PATCH Torch 2.6 – Chargement modèle YOLO + safe_globals
+# ------------------------------------------------------
 import torch
 from torch.serialization import add_safe_globals
+from ultralytics import YOLO
 from ultralytics.nn.tasks import DetectionModel
+from torch.nn.modules.container import Sequential
 
-# Ajout du modèle YOLO dans les globals autorisés
-add_safe_globals([DetectionModel])
+# Autoriser les classes picklées utilisées dans le checkpoint YOLO
+add_safe_globals([
+    DetectionModel,
+    Sequential,
+])
+
+MODEL_PATH = "models/best.pt"
+
+@st.cache_resource
+def load_model(path=MODEL_PATH):
+    if not os.path.exists(path):
+        return None
+    try:
+        model = YOLO(path, task="detect")  # YOLO gère torch.load() en interne
+        return model
+    except Exception as e:
+        st.error(f"Erreur lors du chargement du modèle : {e}")
+        return None
+
+model = load_model()
 
 # ---------------------------------------
 # 🎨 CONFIG INTERFACE MODERNE
@@ -30,27 +48,10 @@ st.set_page_config(
 # 🎨 CSS custom - Design moderne avec cartes vert foncé
 custom_css = """
 <style>
-    /* ton CSS original, inchangé */
-"""  # ⚠️ GARDÉ COMME TU L’AVAIS (je ne répète pas pour réduire la taille)
+    /* ton CSS original, inchangé, gardé ici */
+</style>
+"""
 st.markdown(custom_css, unsafe_allow_html=True)
-
-# ---------------------------------------
-# 🧠 CHARGEMENT DU MODEL YOLO (corrigé)
-# ---------------------------------------
-MODEL_PATH = "models/best.pt"
-
-@st.cache_resource
-def load_model(path=MODEL_PATH):
-    if not os.path.exists(path):
-        return None
-    try:
-        # ⚠️ Important : Charger YOLO avec task='detect'
-        return YOLO(path, task="detect")
-    except Exception as e:
-        st.error(f"Erreur lors du chargement du modèle : {e}")
-        return None
-
-model = load_model()
 
 # ---------------------------------------
 # 🖥️ HEADER PRINCIPAL
