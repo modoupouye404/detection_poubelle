@@ -1,9 +1,10 @@
 streamlit==1.32.0
-numpy==1.24.4
-pandas==2.0.3
-pillow==10.0.1
-requests==2.31.0
-plotly==5.18.0
-opencv-python-headless==4.9.0.80
+ultralytics==8.1.0
+opencv-python-headless==4.8.0.74
+Pillow
+numpy
+torch
+torchvision
+
 
 # If running on Streamlit Cloud and wheels missing, ensure Python<=3.12. Recommended 3.11.
