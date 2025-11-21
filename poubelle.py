@@ -135,6 +135,25 @@ custom_css = """
         background: linear-gradient(135deg, #5d995d 0%, #6bb06b 100%);
     }
     
+    /* Bouton de téléchargement */
+    .download-btn {
+        background: linear-gradient(135deg, #6b46c1 0%, #805ad5 100%) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 15px !important;
+        padding: 12px 25px !important;
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(107, 70, 193, 0.4) !important;
+    }
+    
+    .download-btn:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 8px 25px rgba(107, 70, 193, 0.6) !important;
+        background: linear-gradient(135deg, #805ad5 0%, #9f7aea 100%) !important;
+    }
+    
     /* Cartes de contenu en VERT FONCÉ */
     .content-card {
         background: linear-gradient(135deg, #2d4a2d 0%, #3d6b3d 100%);
@@ -299,35 +318,70 @@ if not ULTRALYTICS_AVAILABLE:
     """)
 
 # ---------------------------------------
-# 📤 SECTION UPLOAD DU MODÈLE
+# 📥 SECTION TÉLÉCHARGEMENT DU MODÈLE
 # ---------------------------------------
 st.markdown("<div class='content-card'>", unsafe_allow_html=True)
 st.markdown("### 🚀 Configuration du Modèle IA")
 
 if model is None:
-    st.warning("""
-    **📝 Modèle introuvable**
+    st.error("""
+    ❌ **Modèle introuvable**
     
     Pour utiliser l'application :
     1. Placez votre fichier `best.pt` dans le dossier `models/`
-    2. Ou uploadez un modèle YOLO ci-dessous
+    2. Le modèle doit s'appeler `best.pt` et être placé dans le dossier `models/`
     """)
-
-uploaded_model = st.file_uploader(
-    "📤 Uploader un modèle YOLO (.pt)",
-    type=["pt"],
-    help="Sélectionnez votre modèle YOLO entraîné"
-)
-
-if uploaded_model is not None:
-    try:
-        model_bytes = uploaded_model.read()
-        with open(MODEL_PATH, "wb") as f:
-            f.write(model_bytes)
-        st.success("🎉 Modèle uploadé avec succès!")
-        st.info("🔄 **Rechargez la page** pour utiliser le nouveau modèle")
-    except Exception as e:
-        st.error(f"❌ Erreur lors de l'upload: {str(e)}")
+else:
+    st.success("✅ **Modèle chargé avec succès!**")
+    
+    # Informations sur le modèle
+    col_info, col_download = st.columns([2, 1])
+    
+    with col_info:
+        st.markdown("""
+        ### 📋 Informations du Modèle
+        - **Type**: YOLOv8
+        - **Fonction**: Détection de poubelles
+        - **Statut**: ✅ Opérationnel
+        """)
+        
+        # Affichage des classes détectables
+        if hasattr(model, 'names'):
+            st.markdown("### 🏷️ Classes Détectables")
+            classes = list(model.names.values())
+            classes_text = ", ".join(classes)
+            st.markdown(f"**Objets reconnus:** {classes_text}")
+    
+    with col_download:
+        st.markdown("### 📥 Téléchargement")
+        
+        # Bouton de téléchargement du modèle actuel
+        if os.path.exists(MODEL_PATH):
+            with open(MODEL_PATH, "rb") as f:
+                model_data = f.read()
+            
+            st.download_button(
+                label="💾 Télécharger le Modèle",
+                data=model_data,
+                file_name="best.pt",
+                mime="application/octet-stream",
+                help="Téléchargez le modèle YOLO de détection de poubelles",
+                use_container_width=True,
+                key="download_model"
+            )
+            
+            # Informations sur le modèle
+            file_size = len(model_data) / (1024 * 1024)  # Taille en MB
+            st.info(f"**Taille du modèle:** {file_size:.1f} MB")
+        
+        st.markdown("---")
+        st.markdown("### 🔗 Modèles Pré-entraînés")
+        st.markdown("""
+        **Modèles YOLOv8 officiels:**
+        - [YOLOv8n](https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt)
+        - [YOLOv8s](https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8s.pt)
+        - [YOLOv8m](https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8m.pt)
+        """)
     
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -355,7 +409,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 # ---------------------------------------
 # 🖼️ AFFICHAGE DES RÉSULTATS
 # ---------------------------------------
-if uploaded_img and ULTRALYTICS_AVAILABLE:
+if uploaded_img and ULTRALYTICS_AVAILABLE and model is not None:
     # Layout principal pour images
     col1, col2 = st.columns([1, 1])
     
@@ -375,12 +429,11 @@ if uploaded_img and ULTRALYTICS_AVAILABLE:
     analyze = st.button(
         "🚀 Lancer l'Analyse IA", 
         type="primary", 
-        use_container_width=True,
-        disabled=(model is None)
+        use_container_width=True
     )
     st.markdown("</div>", unsafe_allow_html=True)
     
-    if analyze and model is not None:
+    if analyze:
         with st.spinner("🔍 **Analyse en cours...** L'IA scanne l'image"):
             # Conversion et prédiction
             img_array = np.array(image)
@@ -463,8 +516,8 @@ if uploaded_img and ULTRALYTICS_AVAILABLE:
             else:
                 st.error("❌ Aucun résultat d'analyse obtenu")
 
-elif uploaded_img and not ULTRALYTICS_AVAILABLE:
-    st.error("❌ Ultralytics n'est pas disponible - Impossible d'analyser l'image")
+elif uploaded_img and (not ULTRALYTICS_AVAILABLE or model is None):
+    st.error("❌ Modèle non disponible - Impossible d'analyser l'image")
 
 else:
     # Section d'instructions quand aucune image n'est uploadée
@@ -477,8 +530,8 @@ else:
         st.markdown("""
         <div style='text-align: center; padding: 1.5rem;'>
             <div style='font-size: 3rem; margin-bottom: 1rem;'>1️⃣</div>
-            <h4 style='color: #e8f5e8;'>Upload du Modèle</h4>
-            <p style='color: #c8e6c8;'>Configurez votre modèle YOLO ou utilisez le modèle par défaut</p>
+            <h4 style='color: #e8f5e8;'>Modèle Pré-configuré</h4>
+            <p style='color: #c8e6c8;'>Utilisez le modèle YOLO pré-configuré pour la détection</p>
         </div>
         """, unsafe_allow_html=True)
     
